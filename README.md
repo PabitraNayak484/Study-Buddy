@@ -10,6 +10,23 @@ A full-stack AI web app that helps students study through a conversational tutor
 - **Study Timer** — A Pomodoro-style focus timer with presets.
 - **Dark Mode & Mobile Responsive** — The interface adapts to narrow screens and includes a theme toggle.
 
+## Screenshots
+
+#### Chat Tutor
+![Chat Tutor](screenshots/Chat%20Tutor.jpeg)
+
+#### Quiz Me
+![Quiz Me](screenshots/Quiz%20Me.jpeg)
+
+#### Notes & Flashcards
+![Notes & Flashcards](screenshots/Notes%20&%20Flashcards.jpeg)
+
+#### Study Timer
+![Study Timer](screenshots/Study%20Timer.jpeg)
+
+#### Dark Mode
+![Dark Mode](screenshots/Dark%20Mode.jpeg)
+
 ## Tech stack
 
 | Layer      | Choice                                   |
