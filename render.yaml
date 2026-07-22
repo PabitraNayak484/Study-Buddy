@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: study-buddy-app
+    env: docker
+    plan: free
+    # We expose port 8000 in the Dockerfile, Render will map it automatically
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # Tells Render not to commit the key to the yaml file, you will enter it in the dashboard
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash

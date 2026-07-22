@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Study Buddy — Your AI Study Assistant</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📓</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Kalam:wght@400;700&family=Lexend:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=26" />
+</head>
+
+<body>
+
+  <header class="chalkboard">
+    <div class="chalkboard-inner">
+      <div class="brand-row">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">✎</span>
+          <span class="brand-name">Study Buddy</span>
+        </div>
+        <button type="button" id="theme-toggle" class="theme-toggle" title="Toggle dark mode"
+          aria-label="Toggle dark mode">
+          <div class="theme-toggle-slider"></div>
+          <svg class="theme-icon sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="theme-icon moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+      </div>
+      <p class="tagline">Your AI study companion, ready when you are.</p>
+      <div class="status-pill">
+        <span class="dot"></span> AI tutor online
+      </div>
+    </div>
+    <div class="chalk-dust" aria-hidden="true"></div>
+  </header>
+
+  <main class="desk">
+
+    <nav class="binder-tabs" role="tablist" aria-label="Study tools">
+      <button class="tab" data-tab="chat" role="tab" aria-selected="true">
+        <span class="tab-icon" aria-hidden="true">💬</span> Chat Tutor
+      </button>
+      <button class="tab" data-tab="quiz" role="tab" aria-selected="false">
+        <span class="tab-icon" aria-hidden="true">📝</span> Quiz Me
+      </button>
+      <button class="tab" data-tab="cards" role="tab" aria-selected="false">
+        <span class="tab-icon" aria-hidden="true">🗂️</span> Notes &amp; Flashcards
+      </button>
+      <button class="tab" data-tab="timer" role="tab" aria-selected="false">
+        <span class="tab-icon" aria-hidden="true">⏱️</span> Study Timer
+      </button>
+    </nav>
+
+    <!-- ============ CHAT PANEL ============ -->
+    <section class="panel paper" id="panel-chat" data-panel="chat">
+      <div class="panel-head">
+        <h2>Ask anything</h2>
+        <input type="text" id="subject-input" placeholder="Optional: focus subject (e.g. Organic Chemistry)" />
+      </div>
+
+      <div class="chat-log" id="chat-log">
+        <div class="msg msg-bot">
+          <div class="msg-bubble">
+            Hi, I'm Study Buddy 👋 Ask me to explain a concept, walk through a problem, or quiz your understanding of
+            anything you're studying. You can also attach a photo (like a diagram) or use the mic. What are we working
+            on today?
+          </div>
+        </div>
+      </div>
+
+      <div id="image-preview-wrap" class="image-preview-wrap hidden">
+        <img id="image-preview" alt="Attached image preview" />
+        <button type="button" id="image-remove" title="Remove attached image">✕</button>
+      </div>
+
+      <form class="chat-form" id="chat-form">
+        <input type="file" id="chat-image-input" accept="image/png,image/jpeg,image/webp" class="visually-hidden" />
+        <button type="button" id="chat-attach-btn" class="icon-btn" title="Attach an image">📎</button>
+        <button type="button" id="chat-mic-btn" class="icon-btn" title="Speak your question">🎤</button>
+        <textarea id="chat-input" placeholder="Type your question... (Shift+Enter for a new line)" rows="1"></textarea>
+        <button type="submit" id="chat-send">Send</button>
+      </form>
+    </section>
+
+    <!-- ============ QUIZ PANEL ============ -->
+    <section class="panel paper hidden" id="panel-quiz" data-panel="quiz">
+      <div class="panel-head">
+        <h2>Test yourself</h2>
+      </div>
+
+      <form class="quiz-form" id="quiz-form">
+        <input type="text" id="quiz-topic" placeholder="Topic (e.g. The French Revolution)" required />
+        <div class="quiz-form-row">
+          <label>
+            Questions
+            <select id="quiz-count">
+              <option>3</option>
+              <option selected>5</option>
+              <option>8</option>
+              <option>10</option>
+            </select>
+          </label>
+          <label>
+            Difficulty
+            <select id="quiz-difficulty">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </label>
+          <button type="submit" id="quiz-generate">Generate quiz</button>
+        </div>
+        <label class="auto-difficulty-row">
+          <input type="checkbox" id="quiz-auto-difficulty" />
+          Auto-adjust difficulty based on my last score
+          <span id="last-score-badge" class="last-score-badge hidden"></span>
+        </label>
+      </form>
+
+      <div id="quiz-status" class="status-line hidden"></div>
+      <div id="quiz-results" class="quiz-results"></div>
+      <div id="quiz-summary" class="quiz-summary hidden"></div>
+    </section>
+
+    <!-- ============ NOTES / FLASHCARDS PANEL ============ -->
+    <section class="panel paper hidden" id="panel-cards" data-panel="cards">
+      <div class="panel-head">
+        <h2>Turn notes into study material</h2>
+      </div>
+
+      <form class="notes-form" id="notes-form">
+        <textarea id="notes-input"
+          placeholder="Paste your notes, textbook paragraph, or lecture summary here... or upload a file below" rows="6"
+          required></textarea>
+        <div class="upload-row">
+          <input type="file" id="notes-file-input" accept=".pdf,.docx,image/png,image/jpeg,image/webp"
+            class="visually-hidden" />
+          <button type="button" id="notes-upload-btn" class="upload-btn">📄 Upload PDF, DOCX, or photo of notes</button>
+        </div>
+        <div class="notes-form-row">
+          <button type="submit" data-mode="summary" class="notes-btn">Summarize</button>
+          <button type="submit" data-mode="flashcards" class="notes-btn notes-btn-alt">Make flashcards</button>
+        </div>
+      </form>
+
+      <div id="notes-status" class="status-line hidden"></div>
+      <div id="summary-output" class="summary-output hidden"></div>
+      <div id="deck-actions" class="deck-actions hidden">
+        <button type="button" id="export-anki-btn" class="deck-action-btn">📥 Export to Anki (.txt)</button>
+        <button type="button" id="print-deck-btn" class="deck-action-btn">🖨️ Print / Save as PDF</button>
+      </div>
+      <div id="flashcard-deck" class="flashcard-deck"></div>
+    </section>
+
+    <!-- ============ STUDY TIMER PANEL ============ -->
+    <section class="panel paper hidden" id="panel-timer" data-panel="timer">
+      <div class="panel-head">
+        <h2>Stay on track</h2>
+      </div>
+
+      <div class="timer-wrap">
+        <div class="timer-display" id="timer-display">25:00</div>
+        <div class="timer-mode-label" id="timer-mode-label">Focus session</div>
+
+        <div class="timer-controls">
+          <button type="button" id="timer-start" class="timer-btn timer-btn-primary">Start</button>
+          <button type="button" id="timer-pause" class="timer-btn hidden">Pause</button>
+          <button type="button" id="timer-reset" class="timer-btn timer-btn-ghost">Reset</button>
+        </div>
+
+        <div class="timer-presets">
+          <button type="button" class="preset-btn" data-focus="25" data-break="5">25 / 5</button>
+          <button type="button" class="preset-btn" data-focus="50" data-break="10">50 / 10</button>
+          <button type="button" class="preset-btn" data-focus="15" data-break="3">15 / 3</button>
+        </div>
+
+        <p class="timer-hint">Classic Pomodoro: focus, then take a short break. No AI needed - this one's just for you.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="page-footer">
+    Built with Vibe Coding — Powered by Google Gemini — <span id="model-name"></span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js?v=23"></script>
+</body>
+
+</html>
