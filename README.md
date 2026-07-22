@@ -19,7 +19,7 @@ A full-stack AI web app that helps students study through a conversational tutor
 | LLM        | Google Gemini API (`google-genai` SDK)    |
 | File parsing | PyMuPDF (PDF), python-docx (DOCX), Gemini vision (photos and OCR fallback for scanned PDFs) |
 | Container  | Docker (single image serves both layers)  |
-| Deployment | AWS Elastic Beanstalk + CloudFront |
+| Deployment | Render (Free Tier) or AWS Elastic Beanstalk |
 
 ## Project structure
 
@@ -33,8 +33,10 @@ study-assistant/
 │   ├── styles.css
 │   └── app.js
 ├── Dockerfile
+├── render.yaml           # blueprint for 1-click Render deployment
 ├── .dockerignore
 ├── .env.example
+├── RENDER_DEPLOYMENT.md  # step-by-step Render free hosting guide
 └── DEPLOYMENT.md         # step-by-step AWS deployment guide
 ```
 
@@ -87,6 +89,6 @@ All of these are optional except `GEMINI_API_KEY` — see `.env.example`.
 - Full exception details are logged server-side and never sent to the client.
 - Automatic retry with backoff is implemented for transient API errors.
 
-## Deploying to AWS
+## Deployment
 
-See `DEPLOYMENT.md` for a step-by-step AWS deployment walkthrough.
+This app is fully containerized and can be deployed anywhere that supports Docker. We provide two step-by-step guides depending on your needs:
