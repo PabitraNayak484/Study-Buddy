@@ -13,19 +13,19 @@ A full-stack AI web app that helps students study through a conversational tutor
 ## Screenshots
 
 #### Chat Tutor
-![Chat Tutor](screenshots/Chat%20Tutor.jpeg)
+![Chat Tutor](screenshots/chat-tutor.jpeg)
 
 #### Quiz Me
-![Quiz Me](screenshots/Quiz%20Me.jpeg)
+![Quiz Me](screenshots/quiz-me.jpeg)
 
 #### Notes & Flashcards
-![Notes & Flashcards](screenshots/Notes%20&%20Flashcards.jpeg)
+![Notes & Flashcards](screenshots/notes-flashcards.jpeg)
 
 #### Study Timer
-![Study Timer](screenshots/Study%20Timer.jpeg)
+![Study Timer](screenshots/study-timer.jpeg)
 
 #### Dark Mode
-![Dark Mode](screenshots/Dark%20Mode.jpeg)
+![Dark Mode](screenshots/dark-mode.jpeg)
 
 ## Tech stack
 
