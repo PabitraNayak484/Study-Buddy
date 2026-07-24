@@ -108,4 +108,8 @@ All of these are optional except `GEMINI_API_KEY` — see `.env.example`.
 
 ## Deployment
 
-This app is fully containerized and can be deployed anywhere that supports Docker. We provide two step-by-step guides depending on your needs:
+This app is fully containerized and can be deployed anywhere that supports Docker. 
+
+### Live Demos
+- **AWS Deployment**: [http://study-buddy-env.eba-a6fc86pw.ap-south-1.elasticbeanstalk.com](http://study-buddy-env.eba-a6fc86pw.ap-south-1.elasticbeanstalk.com)
+- **Render Deployment**: [https://study-buddy-app.onrender.com](https://study-buddy-app.onrender.com) *(Update this if your Render URL is different)*
