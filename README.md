@@ -111,5 +111,5 @@ All of these are optional except `GEMINI_API_KEY` — see `.env.example`.
 This app is fully containerized and can be deployed anywhere that supports Docker. 
 
 ### Live Demos
-- **AWS Deployment**: [http://study-buddy-env.eba-a6fc86pw.ap-south-1.elasticbeanstalk.com](http://study-buddy-env.eba-a6fc86pw.ap-south-1.elasticbeanstalk.com)
+- **AWS Deployment**: [https://d18b5s0rfpx751.cloudfront.net](https://d18b5s0rfpx751.cloudfront.net)
 - **Render Deployment**: [https://study-buddy-app-71zh.onrender.com](https://study-buddy-app-71zh.onrender.com)
