@@ -63,20 +63,38 @@ study-assistant/
 Create one at https://aistudio.google.com/apikey (free tier is sufficient).
 
 **2. Configure environment variables**
+
+**macOS/Linux:**
 ```bash
 cp .env.example .env
 # then edit .env and paste in your key
 ```
+**Windows (PowerShell):**
+```powershell
+Copy-Item .env.example .env
+# then open .env in any editor and paste in your key
+```
 
 **3a. Run with Python directly**
+
+**macOS/Linux:**
 ```bash
 cd backend
-python3 -m venv venv && source venv/bin/activate    # optional but recommended
+python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-export $(cat ../.env | xargs)   # loads env vars into the shell (macOS/Linux)
-uvicorn main:app --reload --app-dir . --port 8000
+export $(cat ../.env | xargs)
+uvicorn main:app --reload --port 8000
+```
+
+**Windows (PowerShell):**
+```powershell
+cd backend
+pip install -r requirements.txt
+# .env is loaded automatically by python-dotenv
+uvicorn main:app --reload --port 8000
 ```
 Visit http://localhost:8000
+
 
 **3b. Run with Docker**
 ```bash

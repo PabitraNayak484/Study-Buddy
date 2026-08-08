@@ -417,7 +417,23 @@ textarea:focus {
     border-radius: var(--radius-card);
     font-size: 0.95rem;
     line-height: 1.5;
-    white-space: pre-wrap;
+}
+
+.msg-bubble p, .summary-output p {
+    margin: 0 0 0.75rem 0;
+}
+
+.msg-bubble p:last-child, .summary-output p:last-child {
+    margin-bottom: 0;
+}
+
+.msg-bubble ul, .msg-bubble ol, .summary-output ul, .summary-output ol {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+}
+
+.msg-bubble li, .summary-output li {
+    margin-bottom: 0.25rem;
 }
 
 .msg-bot .msg-bubble {
@@ -433,6 +449,7 @@ textarea:focus {
     color: var(--highlighter-ink);
     border-top-right-radius: 3px;
     font-weight: 500;
+    white-space: pre-wrap;
 }
 
 .msg-bot .msg-bubble.streaming::after {
@@ -819,7 +836,6 @@ textarea:focus {
     border-radius: var(--radius-card);
     padding: 1rem 1.2rem;
     margin-top: 1rem;
-    white-space: pre-wrap;
     line-height: 1.6;
     box-shadow: 1px 2px 0 var(--card-shadow);
 }
