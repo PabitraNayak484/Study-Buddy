@@ -1,6 +1,5 @@
 // ============================================================================
 // Study Buddy — frontend logic
-// Vanilla JS, no build step. Talks to the FastAPI backend under /api/*.
 // ============================================================================
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -32,7 +31,7 @@ $$(".tab").forEach((tab) => {
 });
 
 // ---------------------------------------------------------------------------
-// Dark mode (preference remembered locally on this device only)
+// Dark mode
 // ---------------------------------------------------------------------------
 const themeToggle = $("#theme-toggle");
 
@@ -138,12 +137,10 @@ function initializeCustomSelects() {
 initializeCustomSelects();
 
 // ---------------------------------------------------------------------------
-// Pre-load Speech Synthesis Voices (Fix for empty voices bug in Chrome)
+// Pre-load Speech Synthesis Voices
 // ---------------------------------------------------------------------------
 if ("speechSynthesis" in window) {
-  // Calling getVoices() immediately kicks off the async loading in some browsers
   window.speechSynthesis.getVoices();
-  // Ensure the list is populated when the OS finishes loading them
   window.speechSynthesis.onvoiceschanged = () => {
     window.speechSynthesis.getVoices();
   };
@@ -160,14 +157,14 @@ const subjectInput = $("#subject-input");
 const chatImageInput = $("#chat-image-input");
 const chatAttachBtn = $("#chat-attach-btn");
 const chatMicBtn = $("#chat-mic-btn");
-const chatStop = $("#chat-stop");
 const imagePreviewWrap = $("#image-preview-wrap");
 const imagePreview = $("#image-preview");
 const imageRemoveBtn = $("#image-remove");
 
-let chatHistory = []; // [{role: "user"|"assistant", content: "..."}]
-let attachedImage = null; // { base64, mimeType } | null
-let currentAborter = null;
+// State tracking for the active chat session
+let chatHistory = []; // Tracks messages to send to the backend
+let attachedImage = null; // Currently attached image (base64 & mimeType)
+let currentAborter = null; // Allows cancelling the active request
 
 chatInput.addEventListener("input", () => {
   chatInput.style.height = "auto";
@@ -189,7 +186,7 @@ chatImageInput.addEventListener("change", () => {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
-    const dataUrl = reader.result; // "data:image/png;base64,AAAA..."
+    const dataUrl = reader.result;
     const base64 = String(dataUrl).split(",")[1] || "";
     attachedImage = { base64, mimeType: file.type };
     imagePreview.src = dataUrl;
@@ -204,7 +201,7 @@ imageRemoveBtn.addEventListener("click", () => {
   imagePreviewWrap.classList.add("hidden");
 });
 
-// --- Voice input (Web Speech API - free, built into the browser) ---
+// --- Voice input ---
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isListening = false;
@@ -242,17 +239,11 @@ if (!SpeechRecognitionCtor) {
       isListening = true;
       chatMicBtn.classList.add("active");
     } catch {
-      // Recognition already running or blocked by the browser; ignore.
     }
   });
 }
 
-// --- Voice output (read a bot message aloud) ---
-// Force voices to load early; some browsers return empty arrays on the first call
-window.speechSynthesis.getVoices();
-if (window.speechSynthesis.onvoiceschanged !== undefined) {
-  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
-}
+// --- Voice output ---
 
 function addReadAloudButton(bubble, text) {
   if (!("speechSynthesis" in window) || !text.trim()) return;
@@ -269,11 +260,9 @@ function addReadAloudButton(bubble, text) {
     }
     window.speechSynthesis.cancel();
     
-    // Strip markdown characters so it doesn't read "asterisk asterisk" aloud
     const cleanText = text.replace(/[*#_`~>]/g, "");
     const utter = new SpeechSynthesisUtterance(cleanText);
     
-    // Try to pick a natural-sounding English voice (Google, Microsoft Premium, Apple Siri, etc)
     const voices = window.speechSynthesis.getVoices();
     const bestVoice = voices.find(v => v.lang.startsWith("en") && /natural|premium|google|online|aria|jenny|guy|siri|samantha/i.test(v.name)) 
                    || voices.find(v => v.lang === "en-US" || v.lang === "en-GB")
@@ -282,7 +271,6 @@ function addReadAloudButton(bubble, text) {
       utter.voice = bestVoice;
     }
     
-    // Slight tweak to pitch/rate can also make default voices sound less robotic
     utter.rate = 1.05;
     
     utter.onend = () => { btn.classList.remove("speaking"); btn.textContent = "🔊 Read aloud"; };
@@ -342,7 +330,7 @@ chatForm.addEventListener("submit", async (e) => {
       signal: currentAborter.signal,
       body: JSON.stringify({
         message,
-        history: chatHistory.slice(0, -1), // history excludes the message just sent
+        history: chatHistory.slice(0, -1),
         subject: subjectInput.value.trim() || null,
         image_data: sendingImage ? sendingImage.base64 : null,
         image_mime_type: sendingImage ? sendingImage.mimeType : null,
@@ -357,6 +345,7 @@ chatForm.addEventListener("submit", async (e) => {
       throw new Error(`Server responded with ${res.status}`);
     }
 
+    // Setup reader to parse incoming Server-Sent Events
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -366,9 +355,9 @@ chatForm.addEventListener("submit", async (e) => {
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE frames are separated by a blank line
+      // SSE frames are separated by double newlines
       const frames = buffer.split("\n\n");
-      buffer = frames.pop(); // last (possibly incomplete) frame stays in buffer
+      buffer = frames.pop(); // Keep the last incomplete chunk in the buffer
 
       for (const frame of frames) {
         const line = frame.trim();
@@ -384,21 +373,20 @@ chatForm.addEventListener("submit", async (e) => {
           } else if (parsed.text) {
             fullText += parsed.text;
           }
-          botBubble.innerHTML = marked.parse(fullText);
+          botBubble.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
           chatLog.scrollTop = chatLog.scrollHeight;
         } catch {
-          // ignore malformed frame
         }
       }
     }
   } catch (err) {
     if (err.name === "AbortError") {
       fullText += "\n\n*(Stopped by user)*";
-      botBubble.innerHTML = marked.parse(fullText);
+      botBubble.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
     } else {
       fullText += `\n\n⚠️ ${err.message}`;
       hadError = true;
-      botBubble.innerHTML = marked.parse(fullText);
+      botBubble.innerHTML = DOMPurify.sanitize(marked.parse(fullText));
     }
   } finally {
     currentAborter = null;
@@ -407,6 +395,8 @@ chatForm.addEventListener("submit", async (e) => {
     chatSend.disabled = false;
     botBubble.classList.remove("streaming");
     chatHistory.push({ role: "assistant", content: fullText });
+    // Keep history trimmed to the backend's Pydantic limit
+    if (chatHistory.length > 40) chatHistory = chatHistory.slice(-40);
     attachedImage = null;
     chatImageInput.value = "";
     if (!hadError) addReadAloudButton(botBubble, fullText);
@@ -457,7 +447,10 @@ quizForm.addEventListener("submit", async (e) => {
     const res = await fetch("/api/quiz", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      signal: currentQuizAborter.signal,
+      // Use a composite signal: manual cancel OR 90s hard timeout
+      signal: AbortSignal.any
+        ? AbortSignal.any([currentQuizAborter.signal, AbortSignal.timeout(90_000)])
+        : currentQuizAborter.signal,
       body: JSON.stringify({
         topic,
         num_questions: Number($("#quiz-count").value),
@@ -590,7 +583,7 @@ const deckActions = $("#deck-actions");
 const exportAnkiBtn = $("#export-anki-btn");
 const printDeckBtn = $("#print-deck-btn");
 
-let currentDeckCards = []; // tracks whatever is currently shown, for export
+let currentDeckCards = [];
 
 notesForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -611,6 +604,7 @@ notesForm.addEventListener("submit", async (e) => {
     const res = await fetch("/api/summarize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout ? AbortSignal.timeout(90_000) : undefined,
       body: JSON.stringify({ text, mode }),
     });
 
@@ -624,7 +618,7 @@ notesForm.addEventListener("submit", async (e) => {
     if (mode === "flashcards") {
       renderFlashcards(data.flashcards || []);
     } else {
-      summaryOutput.innerHTML = marked.parse(data.summary || "");
+      summaryOutput.innerHTML = DOMPurify.sanitize(marked.parse(data.summary || ""));
       summaryOutput.classList.remove("hidden");
     }
     setStatus(notesStatus, "");
@@ -644,17 +638,34 @@ function renderFlashcards(cards, opts = {}) {
   cards.forEach((c) => {
     const card = document.createElement("div");
     card.className = "flashcard";
-    card.innerHTML = `
-      <div class="flashcard-inner">
-        <div class="flashcard-face front${fromReview ? " from-review" : ""}">
-          <span>${escapeHtml(c.front)}</span>
-          <span class="flashcard-hint">tap to flip</span>
-        </div>
-        <div class="flashcard-face back">
-          <span>${escapeHtml(c.back)}</span>
-          <span class="flashcard-hint">tap to flip back</span>
-        </div>
-      </div>`;
+
+    const inner = document.createElement("div");
+    inner.className = "flashcard-inner";
+
+    const front = document.createElement("div");
+    front.className = "flashcard-face front" + (fromReview ? " from-review" : "");
+    const frontText = document.createElement("span");
+    frontText.textContent = c.front;
+    const frontHint = document.createElement("span");
+    frontHint.className = "flashcard-hint";
+    frontHint.textContent = "tap to flip";
+    front.appendChild(frontText);
+    front.appendChild(frontHint);
+
+    const back = document.createElement("div");
+    back.className = "flashcard-face back";
+    const backText = document.createElement("span");
+    backText.textContent = c.back;
+    const backHint = document.createElement("span");
+    backHint.className = "flashcard-hint";
+    backHint.textContent = "tap to flip back";
+    back.appendChild(backText);
+    back.appendChild(backHint);
+
+    inner.appendChild(front);
+    inner.appendChild(back);
+    card.appendChild(inner);
+
     card.addEventListener("click", () => card.classList.toggle("flipped"));
     flashcardDeck.appendChild(card);
   });
@@ -662,7 +673,7 @@ function renderFlashcards(cards, opts = {}) {
   deckActions.classList.toggle("hidden", currentDeckCards.length === 0);
 }
 
-// --- File upload: PDF / DOCX / photo of notes -> extracted text ---
+// --- File upload ---
 notesUploadBtn.addEventListener("click", () => notesFileInput.click());
 
 notesFileInput.addEventListener("change", async () => {
@@ -675,7 +686,11 @@ notesFileInput.addEventListener("change", async () => {
   try {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch("/api/extract", { method: "POST", body: formData });
+    const res = await fetch("/api/extract", {
+      method: "POST",
+      signal: AbortSignal.timeout ? AbortSignal.timeout(90_000) : undefined,
+      body: formData,
+    });
 
     if (res.status === 429) {
       const data = await res.json().catch(() => ({}));
@@ -689,7 +704,7 @@ notesFileInput.addEventListener("change", async () => {
     setStatus(notesStatus, `Couldn't read that file: ${err.message}`, true);
   } finally {
     notesUploadBtn.disabled = false;
-    notesFileInput.value = ""; // allow re-selecting the same file
+    notesFileInput.value = "";
   }
 });
 
@@ -715,7 +730,7 @@ exportAnkiBtn.addEventListener("click", () => {
 printDeckBtn.addEventListener("click", () => window.print());
 
 // ---------------------------------------------------------------------------
-// Study Timer (Pomodoro) - no AI involved, pure client-side
+// Study Timer (Client-side Pomodoro)
 // ---------------------------------------------------------------------------
 const timerDisplay = $("#timer-display");
 const timerModeLabel = $("#timer-mode-label");
@@ -741,9 +756,18 @@ function updateTimerDisplay() {
   timerModeLabel.textContent = isBreak ? "Break time" : "Focus session";
 }
 
+// Use a single, reused AudioContext to avoid hitting browser instance limits
+let _audioCtx = null;
+function _getAudioCtx() {
+  if (!_audioCtx || _audioCtx.state === "closed") {
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  return _audioCtx;
+}
+
 function playBeep() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -753,7 +777,6 @@ function playBeep() {
     osc.start();
     osc.stop(ctx.currentTime + 0.35);
   } catch {
-    // Web Audio not available - the visual/notification update is still enough.
   }
 }
 
@@ -770,11 +793,13 @@ function notifyTimerSwitch() {
 }
 
 function tick() {
-  remainingSeconds -= 1;
-  if (remainingSeconds < 0) {
+  // Check completion first to avoid displaying -1 seconds
+  if (remainingSeconds <= 0) {
     isBreak = !isBreak;
     remainingSeconds = (isBreak ? breakMinutes : focusMinutes) * 60;
     notifyTimerSwitch();
+  } else {
+    remainingSeconds -= 1;
   }
   updateTimerDisplay();
 }

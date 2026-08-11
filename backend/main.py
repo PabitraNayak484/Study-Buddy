@@ -1,36 +1,12 @@
 """
 AI Study Assistant - Backend
 ============================
-FastAPI server that powers the AI Study Assistant. It exposes these
-capabilities on top of the Google Gemini API:
-
-  1. /api/chat        - a streaming, conversational study tutor
-                         (optionally with an attached image)
-  2. /api/quiz         - generates structured multiple-choice quizzes,
-                         optionally auto-adjusting difficulty to your
-                         last score
-  3. /api/summarize    - summarizes notes or turns them into flashcards
-  4. /api/extract       - extracts text from an uploaded PDF, DOCX, or
-                         photo of handwritten/printed notes
-
-It also serves the static frontend (frontend/) so the whole application
-ships as a single container.
-
-Reliability & security notes (see README for details):
-  - All Gemini calls go through the async client (client.aio) so a single
-    slow request never blocks other users.
-  - Transient Gemini errors are retried once with backoff.
-  - A simple in-memory rate limiter protects the (free-tier) Gemini quota
-    from being exhausted by any one visitor.
-  - CORS is closed by default; same-origin calls (the app calling itself)
-    never need it, so nothing is allowed cross-site unless you explicitly
-    set ALLOWED_ORIGINS.
-  - Error responses sent to the browser are generic; full details are only
-    ever written to the server-side log.
+FastAPI server that powers the AI Study Assistant.
 """
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -63,36 +39,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("study-assistant")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 
-# Comma-separated list of extra origins allowed to call this API cross-site,
-# e.g. "https://example.com". Same-origin requests (the frontend calling its
-# own backend) never need CORS at all, so this is empty by default - which
-# blocks every other website from embedding calls to your API and quietly
-# spending your Gemini quota.
+# Security & Quotas
 ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-
-# Requests allowed per visitor (by IP) per rolling 60-second window, across
-# all /api/* routes. Tuned to stay comfortably under the Gemini free tier's
-# per-minute quota even if several people use the app at once.
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "12"))
-
-# Max upload size accepted by /api/extract (PDF / DOCX / image).
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "8"))
+RATE_LIMIT_PER_MINUTE = int(os.environ.get("RATE_LIMIT_PER_MINUTE", "12")) # Max requests per IP per minute
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "8")) # File size limit for text extraction
 
 if not GEMINI_API_KEY:
-    # Fail loudly at startup rather than on the first request - it is much
-    # easier to debug a missing credential this way.
-    raise RuntimeError(
-        "GEMINI_API_KEY environment variable is not set. "
-        "Copy .env.example to .env and add your key, or set it in your "
-        "AWS environment variables."
-    )
+    raise RuntimeError("GEMINI_API_KEY environment variable is not set.")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 async def cleanup_request_log():
-    """Background task to prevent memory leak by deleting empty IP entries."""
+    """Background task to periodically remove expired IPs from the rate limiter."""
     while True:
         await asyncio.sleep(600)  # Sweep every 10 minutes
         now = time.monotonic()
@@ -118,8 +78,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],  # only methods this API actually uses
+    allow_headers=["Content-Type"],
 )
 
 TUTOR_SYSTEM_INSTRUCTION = (
@@ -138,19 +98,15 @@ TUTOR_SYSTEM_INSTRUCTION = (
 # --------------------------------------------------------------------------
 # Rate limiting (in-memory, per-process sliding window)
 # --------------------------------------------------------------------------
-# This is intentionally simple: a dict of per-IP timestamp queues, no extra
-# service required. It is scoped to a single running process, which matches
-# this project's single-instance Elastic Beanstalk deployment. It resets on
-# restart and doesn't share state across multiple instances/workers - both
-# acceptable trade-offs for a free, low-traffic student/demo deployment.
 
 _request_log: Dict[str, Deque[float]] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
+    """Extracts the real client IP, prioritizing the trusted proxy's X-Forwarded-For entry."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        return forwarded.split(",")[-1].strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -173,8 +129,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 
 # --------------------------------------------------------------------------
-# Request/response models (with size limits, so no single request can send
-# an unbounded amount of text/history for the backend to pay to process)
+# Request/response models
 # --------------------------------------------------------------------------
 
 class ChatMessage(BaseModel):
@@ -215,8 +170,7 @@ def _is_transient(e: APIError) -> bool:
 
 
 async def _call_with_retry(coro_fn: Callable, *, retries: int = 2, base_delay: float = 1.0):
-    """Calls an async Gemini SDK function, retrying transient failures
-    (rate limits, temporary server errors) with exponential backoff."""
+    """Wraps Gemini API calls to automatically retry on rate limits or transient server errors."""
     last_exc: Optional[Exception] = None
     for attempt in range(retries + 1):
         try:
@@ -231,9 +185,6 @@ async def _call_with_retry(coro_fn: Callable, *, retries: int = 2, base_delay: f
     raise last_exc  # pragma: no cover - unreachable, satisfies type checkers
 
 
-# A tiny in-memory cache so identical quiz/summary requests within a short
-# window don't re-spend Gemini quota. Capped so it can't grow unbounded on a
-# long-running process.
 _quiz_cache: Dict[str, tuple] = {}
 _CACHE_TTL_SECONDS = 900  # 15 minutes
 _CACHE_MAX_ENTRIES = 200
@@ -261,6 +212,9 @@ def _cache_set(cache: dict, key: str, value):
 # Prompt / schema helpers
 # --------------------------------------------------------------------------
 
+ALLOWED_IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+
+
 def build_chat_contents(
     history: List[ChatMessage],
     message: str,
@@ -268,13 +222,6 @@ def build_chat_contents(
     image_data: Optional[str] = None,
     image_mime_type: Optional[str] = None,
 ):
-    """Turn the client-supplied history (and optional image) into the
-    Gemini `contents` format.
-
-    Plain dicts are used (instead of the typed helper classes) because the
-    Gen AI SDK accepts either, and dicts keep this file dependency-light and
-    easy to unit test.
-    """
     contents = []
 
     if subject:
@@ -287,6 +234,11 @@ def build_chat_contents(
 
     parts = [{"text": message}]
     if image_data and image_mime_type:
+        if image_mime_type not in ALLOWED_IMAGE_MIME_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported image type '{image_mime_type}'. Allowed: PNG, JPEG, WEBP.",
+            )
         try:
             raw = base64.b64decode(image_data, validate=True)
         except Exception:
@@ -345,9 +297,6 @@ FLASHCARD_SCHEMA = {
 
 
 def _effective_difficulty(req: QuizRequest) -> str:
-    """If auto_difficulty is on and a previous score was supplied, picks the
-    next difficulty from that score instead of the raw difficulty field -
-    an easy, no-persistence way to adapt to the student over a session."""
     if req.auto_difficulty and req.previous_score_percent is not None:
         if req.previous_score_percent < 40:
             return "easy"
@@ -363,15 +312,12 @@ def _effective_difficulty(req: QuizRequest) -> str:
 
 @app.get("/api/health")
 async def health():
-    """Lightweight health check used by AWS."""
     return {"status": "ok", "model": GEMINI_MODEL}
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """Streams a tutoring response back to the client using Server-Sent
-    Events, so text appears progressively rather than all at once. Accepts
-    an optional attached image (e.g. a photo of a diagram or problem)."""
+    """Streams a conversational tutor response back to the client via Server-Sent Events."""
     contents = build_chat_contents(req.history, req.message, req.subject, req.image_data, req.image_mime_type)
 
     async def event_stream():
@@ -407,8 +353,7 @@ async def chat(req: ChatRequest):
 
 @app.post("/api/quiz")
 async def generate_quiz(req: QuizRequest):
-    """Generates a structured multiple-choice quiz as JSON. If auto_difficulty
-    is set with a previous_score_percent, the difficulty adapts automatically."""
+    """Generates a structured multiple-choice quiz, optionally adapting difficulty to past scores."""
     difficulty = _effective_difficulty(req)
     cache_key = f"{req.topic.strip().lower()}|{req.num_questions}|{difficulty}"
     cached = _cache_get(_quiz_cache, cache_key)
@@ -451,9 +396,9 @@ async def generate_quiz(req: QuizRequest):
 
 @app.post("/api/summarize")
 async def summarize(req: SummarizeRequest):
-    """Summarizes notes, or converts them into flashcards, depending on
-    the requested mode."""
-    cache_key = f"{req.mode}|{hash(req.text.strip())}"
+    """Summarizes text notes or extracts them into Q&A flashcards."""
+    text_hash = hashlib.sha256(req.text.strip().encode()).hexdigest()[:16]
+    cache_key = f"{req.mode}|{text_hash}"
     cached = _cache_get(_quiz_cache, cache_key)
     if cached is not None:
         return {**cached, "cached": True} if isinstance(cached, dict) else cached
@@ -511,10 +456,7 @@ ALLOWED_EXTRACT_TYPES = {
 
 @app.post("/api/extract")
 async def extract_text(file: UploadFile = File(...)):
-    """Extracts text from an uploaded PDF, DOCX, or photo of notes, so a
-    student can upload a file instead of retyping everything into the
-    Notes tab. Images are transcribed using Gemini's vision input directly
-    - no separate OCR library needed."""
+    """Extracts raw text from uploaded PDFs, DOCX files, or images (via Gemini Vision)."""
     content_type = file.content_type or ""
     kind = ALLOWED_EXTRACT_TYPES.get(content_type)
     if not kind:
@@ -546,37 +488,44 @@ async def extract_text(file: UploadFile = File(...)):
     return {"text": text[:20000]}  # match the notes size limit used elsewhere
 
 
-async def _extract_pdf_text(raw: bytes) -> str:
+def _sync_pdf_to_parts(raw: bytes):
     with fitz.open(stream=raw, filetype="pdf") as doc:
         text = "\n".join(page.get_text() for page in doc)
         if text.strip():
-            return text
-            
-        # Fallback for scanned PDFs: render to images and use Gemini Vision OCR
-        parts = [{
-            "text": (
-                "Transcribe all readable text from these scanned pages as plain text. "
-                "Preserve headings and structure where clear. Do not add commentary."
-            )
-        }]
-        
-        # Limit to 10 pages to prevent timeouts and payload size issues on free tier
+            return text, None
+
+        page_images = []
         for i in range(min(len(doc), 10)):
-            page = doc[i]
-            pix = page.get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
-            parts.append({
-                "inline_data": {
-                    "mime_type": "image/png",
-                    "data": base64.b64encode(pix.tobytes("png")).decode("ascii")
-                }
-            })
-            
-        response = await _call_with_retry(lambda: client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[{"role": "user", "parts": parts}],
-            config=types.GenerateContentConfig(temperature=0.1),
-        ))
-        return response.text or ""
+            pix = doc[i].get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+            page_images.append(pix.tobytes("png"))
+        return None, page_images
+
+
+async def _extract_pdf_text(raw: bytes) -> str:
+    text, page_images = await asyncio.to_thread(_sync_pdf_to_parts, raw)
+    if text:
+        return text
+
+    parts = [{
+        "text": (
+            "Transcribe all readable text from these scanned pages as plain text. "
+            "Preserve headings and structure where clear. Do not add commentary."
+        )
+    }]
+    for png_bytes in (page_images or []):
+        parts.append({
+            "inline_data": {
+                "mime_type": "image/png",
+                "data": base64.b64encode(png_bytes).decode("ascii"),
+            }
+        })
+
+    response = await _call_with_retry(lambda: client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[{"role": "user", "parts": parts}],
+        config=types.GenerateContentConfig(temperature=0.1),
+    ))
+    return response.text or ""
 
 
 def _extract_docx_text(raw: bytes) -> str:
@@ -607,7 +556,6 @@ async def _extract_image_text(raw: bytes, mime_type: str) -> str:
 # --------------------------------------------------------------------------
 # Static frontend
 # --------------------------------------------------------------------------
-# Mounted last so it doesn't shadow the /api/* routes above.
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
